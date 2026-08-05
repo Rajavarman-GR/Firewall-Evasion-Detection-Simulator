@@ -1,120 +1,235 @@
-Firewall Bypass Detection System
+# Firewall Evasion Detection Simulator
 
-A fully functional real-time Firewall Bypass Detection and Countermeasure System developed using Python, Flask, and Machine Learning. This project simulates attack detection, auto-blocks repeated threats, and visualizes threat logs using dynamic graphs — all in a sleek cyber-themed web dashboard.
+A Flask-based cybersecurity dashboard that simulates common cyberattack scenarios, logs security events, automatically blocks repeatedly offending IP addresses, and visualizes attack statistics. The project demonstrates the implementation of a basic threat monitoring workflow and security event management using Python.
 
-------------------------
+---
 
-🚀 Features
+## Overview
 
-✅ Real-Time Anomaly Detection
-✅ Simulated Cyber Attacks (SQLi, DDoS, Port Scanning)
-✅ Auto-Blocking of IPs after Threshold
-✅ Threat Logging into Excel (threats.xlsx)
-✅ Real-Time Threat Visualization (Graphs)
-✅ Animated Gradient Cyber UI (HTML/CSS)
-✅ Geolocation Tracking Support (optional)
-✅ Email Alerts (optional integration)
-✅ User Authentication (optional)
+This project is designed to simulate a simple firewall monitoring environment where predefined attack events are generated, recorded, and analyzed. It focuses on demonstrating defensive security concepts such as:
 
-------------------------
+- Security event logging
+- Automated IP blocking based on repeated attacks
+- Threat visualization
+- Basic incident monitoring dashboard
 
-📁 Folder Structure
+This project is intended for educational purposes and does **not** inspect live network traffic or bypass real firewall systems.
 
-Firewall_Bypass_Detection/
-├── server.py                  # Flask backend with simulation & detection
-├── firewall_rules.py          # IP auto-blocking logic
-├── anomaly_model.pkl          # ML model (optional)
-├── threats.xlsx               # Logged threats
-├── requirements.txt           # Project dependencies
+---
+
+## Features
+
+- Simulates common attack types
+  - SQL Injection
+  - DDoS
+  - Port Scan
+  - Cross-Site Scripting (XSS)
+  - Brute Force
+
+- Logs security events into an Excel workbook
+
+- Automatically blocks IP addresses after repeated attack attempts
+
+- Displays the latest threat logs through a web dashboard
+
+- Generates a bar chart showing attacks grouped by country
+
+- Simple Flask-based web interface
+
+---
+
+## Technologies Used
+
+- Python
+- Flask
+- Pandas
+- Matplotlib
+- OpenPyXL
+
+---
+
+## Project Structure
+
+```
+Firewall-Evasion-Detection/
+
+│── server.py
+│── firewall_rules.py
+│── requirements.txt
+│── threats.xlsx
+│
 ├── templates/
-│   └── index.html             # Dashboard HTML
+│      index.html
+│
 ├── static/
-│   ├── styles.css             # UI styling and animations
-│   ├── firewall_anim.gif      # Cyber-style visual (animated)
-│   └── logs/
-│       └── threats_graph.png  # Auto-generated threat graph
+│      styles.css
+│
+└── static/logs/
+       threats_graph.png
+```
 
-------------------------
+---
 
-⚙️ Installation
+## How It Works
 
-1. Clone the Repository:
-   git clone https://github.com/Rajavarman-GR/Firewall-Bypass-Detection
-   cd firewall-bypass-detection
+1. The user launches the Flask application.
 
-2. Install Requirements:
-   pip install -r requirements.txt
+2. Clicking **Simulate Attack** generates a random:
 
-3. Run the Application:
-   python server.py
+   - IP Address
+   - Country
+   - Attack Type
 
-4. Open in Browser:
-   http://127.0.0.1:5000
+3. Each simulated event is stored in **threats.xlsx**.
 
-------------------------
+4. The application keeps track of the number of attacks originating from each IP.
 
-🧪 Simulate Attacks
+5. If an IP exceeds the configured threshold (default: 3 attempts), it is marked as blocked using the firewall_rules module.
 
-Use the "Simulate Attack" button to test SQL Injection, DDoS, Port Scans, and more. Each attack is logged and plotted in real-time. After X attempts, IPs are auto-blocked by the firewall_rules.py module.
+6. A bar chart is generated showing the number of threats originating from each country.
 
-------------------------
+7. The dashboard displays the most recent threat logs.
 
-📬 Optional Email Alerts
+---
 
-Set up email alerts in server.py using:
-smtplib.SMTP_SSL("smtp.gmail.com", 465)
-Configure with your credentials or use secure app passwords.
+## Installation
 
-------------------------
+Clone the repository
 
-🔐 Optional: Authentication
+```bash
+git clone https://github.com/Rajavarman-GR/Firewall-Bypass-Detection.git
+```
 
-Protect your dashboard by enabling basic Flask login (see server.py snippet in docs).
+Move into the project directory
 
-------------------------
+```bash
+cd Firewall-Bypass-Detection
+```
 
-📈 Live Graphs & Logging
+Install dependencies
 
-- Logs are auto-appended in threats.xlsx
-- matplotlib generates a live threat bar chart (threats_graph.png)
-- Visualizations auto-refresh in dashboard every 5 seconds
+```bash
+pip install -r requirements.txt
+```
 
-------------------------
+Run the application
 
-💡 Future Enhancements
+```bash
+python server.py
+```
 
-- GeoIP-based mapping (using APIs)
-- Packet sniffing (Scapy integration)
-- SMS/email alerting on high-risk anomalies
-- Admin panel for managing blocked IPs
-- Docker container support
+Open your browser
 
-------------------------
+```
+http://127.0.0.1:5000
+```
 
-🧠 Authors
+---
 
-Rajavarman – Project Developer & UI Designer
-LinkedIn: https://linkedin.com/in/rajavarman-g-r
-GitHub: https://github.com/Rajavarman-GR
+## Dependencies
 
-------------------------
+```
+Flask
+pandas
+matplotlib
+openpyxl
+```
 
-📜 License
+Install all dependencies using:
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```bash
+pip install -r requirements.txt
+```
 
-------------------------
+---
 
-🤝 Contributions
+## Sample Workflow
 
-Pull requests, suggestions, and forks are welcome. For major changes, please open an issue first to discuss what you'd like to change.
+```
+Simulate Attack
+        │
+        ▼
+Generate Random Threat
+        │
+        ▼
+Store Event in Excel
+        │
+        ▼
+Increase Attack Counter
+        │
+        ▼
+Attack Threshold Reached?
+      │
+  Yes ▼
+Block IP
+      │
+      ▼
+Generate Threat Statistics
+      │
+      ▼
+Display Updated Dashboard
+```
 
-------------------------
+---
 
-📚 References
+## Limitations
 
-Flask Documentation - https://flask.palletsprojects.com/
-Pandas Documentation - https://pandas.pydata.org/
-Matplotlib Docs - https://matplotlib.org/
-OpenPyXL - https://openpyxl.readthedocs.io/
-scikit-learn - https://scikit-learn.org/
+This project currently uses simulated attack data.
+
+It does not:
+
+- Capture live packets
+- Monitor real firewall logs
+- Perform intrusion detection
+- Use machine learning
+- Detect real firewall evasion techniques
+- Integrate with SIEM platforms
+
+---
+
+## Possible Improvements
+
+Future enhancements may include:
+
+- Live packet inspection using Scapy
+- Firewall log parsing
+- GeoIP lookup for source addresses
+- Email alert notifications
+- SQLite or PostgreSQL database support
+- REST API for threat ingestion
+- User authentication
+- Docker deployment
+- SIEM integration (Splunk/Wazuh)
+- Rule-based threat detection
+
+---
+
+## Learning Outcomes
+
+This project demonstrates practical understanding of:
+
+- Flask Web Development
+- Python Automation
+- Security Event Logging
+- Data Visualization
+- Basic Firewall Rule Management
+- Threat Monitoring Concepts
+- Incident Logging
+
+---
+
+## Author
+
+**Rajavarman G.R.**
+
+GitHub:
+https://github.com/Rajavarman-GR
+
+LinkedIn:
+https://www.linkedin.com/in/rajavarman-g-r
+
+---
+
+## License
+
+This project is licensed under the MIT License.

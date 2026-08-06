@@ -230,6 +230,4 @@ https://www.linkedin.com/in/rajavarman-g-r
 
 ---
 
-## License
 
-This project is licensed under the MIT License.

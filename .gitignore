@@ -4,3 +4,7 @@ __pycache__/
 .vscode/
 .idea/
 threats.xlsx
+instance/*.db
+.env
+exports/*
+!exports/.gitkeep

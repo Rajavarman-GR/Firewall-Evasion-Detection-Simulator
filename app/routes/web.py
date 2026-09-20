@@ -4,12 +4,23 @@ from app.extensions import db
 from app.models import User
 from app.services.core import audit
 web=Blueprint("web",__name__)
+def login_required(fn):
+    from functools import wraps
+    @wraps(fn)
+    def wrapped(*args,**kwargs):
+        if not session.get("user_id"):return redirect(url_for("web.login"))
+        return fn(*args,**kwargs)
+    return wrapped
+@login_required
 @web.get("/")
 def dashboard():return render_template("index.html")
+@login_required
 @web.get("/events")
 def event_page():return render_template("events.html")
+@login_required
 @web.get("/incidents")
 def incident_page():return render_template("incidents.html")
+@login_required
 @web.get("/firewall")
 def firewall_page():return render_template("firewall.html")
 @web.route("/login",methods=["GET","POST"])
@@ -26,10 +37,12 @@ def login():
 def logout():
     if session.get("user_id"):audit("LOGOUT","user",session["user_id"],"",session.get("username","unknown"));db.session.commit()
     session.clear();return redirect(url_for("web.login"))
+@login_required
 @web.get("/admin/users")
 def users_page():
     if session.get("role")!="ADMIN":abort(403)
     return render_template("users.html")
+@login_required
 @web.get("/admin/settings")
 def settings_page():
     if session.get("role")!="ADMIN":abort(403)

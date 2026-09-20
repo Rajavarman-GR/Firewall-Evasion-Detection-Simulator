@@ -8,37 +8,48 @@ from app.extensions import db
 from app.models import Event, Incident, BlockedIP, FirewallRule, AuditLog, User, InvestigationNote, SystemSetting
 from app.services.core import simulate, block_ip, set_whitelist, rule_conflicts, audit
 from app.permissions import (require_permission, VIEW_AUDIT, RUN_SIMULATION,
-    INVESTIGATE_INCIDENT, BLOCK_IP, MANAGE_RULES, MANAGE_WHITELIST, MANAGE_USERS)
+    INVESTIGATE_INCIDENT, BLOCK_IP, MANAGE_RULES, MANAGE_WHITELIST, MANAGE_USERS,
+    VIEW_DASHBOARD, VIEW_EVENTS, VIEW_INCIDENTS)
 api = Blueprint("api", __name__)
 def serialize(obj):
     data={c.name:getattr(obj,c.name) for c in obj.__table__.columns}
+    data.pop("password_hash", None)
     for k,v in data.items():
         if isinstance(v,datetime): data[k]=v.isoformat()+"Z"
     return data
 @api.get("/dashboard/stats")
+@require_permission(VIEW_DASHBOARD)
 def stats():
     items=Event.query.order_by(Event.timestamp.desc()).limit(100).all()
     return jsonify(total_events=Event.query.count(),active_incidents=Incident.query.filter(Incident.status.in_(["OPEN","INVESTIGATING","CONTAINED"])).count(),high_critical=Incident.query.filter(Incident.severity.in_(["HIGH","CRITICAL"]),Incident.status!="CLOSED").count(),blocked_ips=BlockedIP.query.filter_by(status="ACTIVE",whitelisted=False).count(),recent_events=[serialize(x) for x in items[:10]],incidents=[serialize(x) for x in Incident.query.order_by(Incident.last_seen.desc()).limit(8)],timeline=[serialize(x) for x in items])
 @api.get("/events")
+@require_permission(VIEW_EVENTS)
 def events():
     q=Event.query
     for field in ["severity","attack_type","source_ip","protocol","action","status"]:
         if request.args.get(field):q=q.filter(getattr(Event,field)==request.args[field])
     if request.args.get("search"):q=q.filter(Event.description.ilike(f"%{request.args['search']}%"))
-    if request.args.get("start"):q=q.filter(Event.timestamp >= datetime.fromisoformat(request.args["start"]))
-    if request.args.get("end"):q=q.filter(Event.timestamp <= datetime.fromisoformat(request.args["end"]))
+    if request.args.get("start"):
+        try:q=q.filter(Event.timestamp >= datetime.fromisoformat(request.args["start"]))
+        except ValueError:return jsonify(error="Invalid start date format"),400
+    if request.args.get("end"):
+        try:q=q.filter(Event.timestamp <= datetime.fromisoformat(request.args["end"]))
+        except ValueError:return jsonify(error="Invalid end date format"),400
     sort=request.args.get("sort","timestamp");direction=request.args.get("direction","desc")
     if sort not in {"timestamp","severity","risk_score","source_ip","attack_type","action","status"}:return jsonify(error="Invalid sort field"),400
     column=getattr(Event,sort);q=q.order_by(column.asc() if direction=="asc" else column.desc())
     page=max(1,request.args.get("page",1,type=int));result=q.paginate(page=page,per_page=min(100,request.args.get("per_page",25,type=int)),error_out=False)
     return jsonify(items=[serialize(x) for x in result.items],total=result.total,page=page,pages=result.pages)
 @api.get("/events/<int:event_id>")
+@require_permission(VIEW_EVENTS)
 def event_detail(event_id):return jsonify(serialize(Event.query.get_or_404(event_id)))
 @api.get("/incidents")
+@require_permission(VIEW_INCIDENTS)
 def incidents():return jsonify([serialize(x) for x in Incident.query.order_by(Incident.last_seen.desc())])
 @api.get("/incidents/<int:incident_id>")
+@require_permission(VIEW_INCIDENTS)
 def incident_detail(incident_id):
-    incident=Incident.query.get_or_404(incident_id);data=serialize(incident);data["events"]=[serialize(x) for x in sorted(incident.events,key=lambda e:e.timestamp)];data["audit_history"]=[serialize(x) for x in AuditLog.query.filter_by(target_type="incident",target_id=str(incident_id)).order_by(AuditLog.timestamp.desc())];data["notes"]=[dict(serialize(x),username=x.user.username) for x in InvestigationNote.query.filter_by(incident_id=incident.id).order_by(InvestigationNote.timestamp.asc())];return jsonify(data)
+    incident=Incident.query.get_or_404(incident_id);data=serialize(incident);data["events"]=[serialize(x) for x in sorted(incident.events,key=lambda e:e.timestamp)];data["audit_history"]=[serialize(x) for x in AuditLog.query.filter_by(target_type="incident",target_id=str(incident_id)).order_by(AuditLog.timestamp.desc())];data["notes"]=[dict(serialize(x),username=x.user.username if x.user else "[deleted]") for x in InvestigationNote.query.filter_by(incident_id=incident.id).order_by(InvestigationNote.timestamp.asc())];return jsonify(data)
 @api.post("/incidents/<int:incident_id>/notes")
 @require_permission(INVESTIGATE_INCIDENT)
 def add_incident_note(incident_id):
@@ -52,20 +63,26 @@ def update_incident(incident_id):
     if "status" in data:
         if data["status"] not in valid:return jsonify(error="Invalid incident status"),400
         incident.status=data["status"];audit("CHANGE_INCIDENT_STATUS","incident",incident.id,data["status"],session.get("username","unknown"))
-    if "assigned_to" in data:incident.assigned_to=data["assigned_to"]
+    if "assigned_to" in data:
+        assignee=data.get("assigned_to")
+        if assignee and not User.query.filter_by(username=assignee,status="ACTIVE").first():return jsonify(error="Assigned user does not exist or is not active"),400
+        incident.assigned_to=assignee;audit("ASSIGN_INCIDENT","incident",incident.id,f"assigned to {assignee or 'unassigned'}",session.get("username","unknown"))
     db.session.commit();return jsonify(serialize(incident))
 @api.get("/firewall/rules")
+@require_permission(VIEW_DASHBOARD)
 def rules():return jsonify([serialize(x) for x in FirewallRule.query.order_by(FirewallRule.priority).all()])
 @api.post("/firewall/rules")
 @require_permission(MANAGE_RULES)
 def create_rule():
     data=request.get_json(silent=True) or {}
     if not data.get("name") or data.get("action") not in {"ALLOW","DENY","DROP","LOG","ALERT","BLOCK_TEMPORARY","BLOCK_PERMANENT"}:return jsonify(error="name and valid action are required"),400
+    if FirewallRule.query.filter_by(name=data["name"]).first():return jsonify(error="Rule name already exists"),409
     rule=FirewallRule(**{k:v for k,v in data.items() if k in {"name","description","source_ip","destination_ip","protocol","source_port","destination_port","action","priority","enabled"}});db.session.add(rule);db.session.flush();warnings=rule_conflicts(rule);audit("CREATE_RULE","firewall_rule",rule.id,rule.name,session.get("username","unknown"));db.session.commit();return jsonify(rule=serialize(rule),conflict_warnings=warnings),201
 @api.put("/firewall/rules/<int:rule_id>")
 @require_permission(MANAGE_RULES)
 def update_rule(rule_id):
     rule=FirewallRule.query.get_or_404(rule_id);data=request.get_json(silent=True) or {}
+    if "name" in data and data["name"]!=rule.name and FirewallRule.query.filter_by(name=data["name"]).first():return jsonify(error="Rule name already exists"),409
     for k in {"name","description","source_ip","destination_ip","protocol","source_port","destination_port","action","priority","enabled"}:
         if k in data:setattr(rule,k,data[k])
     audit("UPDATE_RULE","firewall_rule",rule.id,rule.name,session.get("username","unknown"));db.session.commit();return jsonify(serialize(rule))
@@ -74,9 +91,17 @@ def update_rule(rule_id):
 def delete_rule(rule_id):
     rule=FirewallRule.query.get_or_404(rule_id);audit("DELETE_RULE","firewall_rule",rule.id,rule.name,session.get("username","unknown"));db.session.delete(rule);db.session.commit();return "",204
 @api.get("/firewall/blocked")
+@require_permission(VIEW_DASHBOARD)
 def blocked():return jsonify([serialize(x) for x in BlockedIP.query.order_by(BlockedIP.created_at.desc())])
 @api.get("/firewall/whitelist")
+@require_permission(VIEW_DASHBOARD)
 def whitelist():return jsonify([serialize(x) for x in BlockedIP.query.filter_by(whitelisted=True).order_by(BlockedIP.created_at.desc())])
+@api.get("/firewall/decisions")
+@require_permission(VIEW_DASHBOARD)
+def decisions():
+    """Return recent firewall decisions from events."""
+    items=Event.query.order_by(Event.timestamp.desc()).limit(50).all()
+    return jsonify([{"timestamp":e.timestamp.isoformat()+"Z","source_ip":e.source_ip,"destination_ip":e.destination_ip,"protocol":e.protocol,"decision":e.action,"reason":e.description} for e in items])
 @api.post("/firewall/whitelist")
 @require_permission(MANAGE_WHITELIST)
 def add_whitelist():
@@ -94,7 +119,10 @@ def remove_whitelist(ip):
 def block():
     data=request.get_json(silent=True) or {}
     if not data.get("ip"):return jsonify(error="ip is required"),400
-    item,error=block_ip(data["ip"],data.get("reason","Manual simulated block"),data.get("severity","HIGH"),int(data.get("duration_minutes",5)),bool(data.get("permanent",False)))
+    try:duration_minutes=int(data.get("duration_minutes",5))
+    except (ValueError,TypeError):return jsonify(error="duration_minutes must be an integer"),400
+    if duration_minutes<1:return jsonify(error="duration_minutes must be positive"),400
+    item,error=block_ip(data["ip"],data.get("reason","Manual simulated block"),data.get("severity","HIGH"),duration_minutes,bool(data.get("permanent",False)))
     if error:return jsonify(error=error),409
     db.session.commit();return jsonify(serialize(item)),201
 @api.post("/firewall/unblock")
@@ -106,7 +134,12 @@ def unblock():
 @api.post("/simulation/attack")
 @require_permission(RUN_SIMULATION)
 def attack():
-    data=request.get_json(silent=True) or {};made=simulate(data.get("attack_type","random"),count=max(1,min(50,int(data.get("count",1)))));return jsonify(created=len(made),events=[serialize(x) for x in made])
+    data=request.get_json(silent=True) or {}
+    try:count=int(data.get("count",1))
+    except (ValueError,TypeError):return jsonify(error="count must be an integer"),400
+    count=max(1,min(50,count))
+    made=simulate(data.get("attack_type","random"),count=count)
+    return jsonify(created=len(made),events=[serialize(x) for x in made])
 @api.post("/simulation/scenario")
 @require_permission(RUN_SIMULATION)
 def scenario():
@@ -116,7 +149,11 @@ def scenario():
 @api.post("/simulation/start")
 @require_permission(RUN_SIMULATION)
 def start():
-    count=max(1,min(50,int((request.get_json(silent=True) or {}).get("count",10))));made=simulate("normal",count=count);return jsonify(created=len(made),mode="automated")
+    try:count=int((request.get_json(silent=True) or {}).get("count",10))
+    except (ValueError,TypeError):return jsonify(error="count must be an integer"),400
+    count=max(1,min(50,count))
+    made=simulate("normal",count=count)
+    return jsonify(created=len(made),mode="automated")
 @api.get("/audit")
 @require_permission(VIEW_AUDIT)
 def audit_logs():return jsonify([serialize(x) for x in AuditLog.query.order_by(AuditLog.timestamp.desc()).limit(200)])
@@ -173,13 +210,16 @@ def csv_export(rows, filename, action):
     audit(action,"export",filename,"CSV export",session.get("username","anonymous"));db.session.commit()
     return Response(out.getvalue(),mimetype="text/csv",headers={"Content-Disposition":f"attachment; filename={filename}"})
 @api.get("/exports/events.csv")
+@require_permission(VIEW_EVENTS)
 def export_events_csv():return csv_export(Event.query.order_by(Event.timestamp.desc()).all(),"events.csv","EXPORT_LOGS")
 @api.get("/exports/incidents.csv")
+@require_permission(VIEW_INCIDENTS)
 def export_incidents_csv():return csv_export(Incident.query.order_by(Incident.last_seen.desc()).all(),"incidents.csv","EXPORT_LOGS")
 @api.get("/exports/audit.csv")
 @require_permission(VIEW_AUDIT)
 def export_audit_csv():return csv_export(AuditLog.query.order_by(AuditLog.timestamp.desc()).all(),"audit_logs.csv","EXPORT_LOGS")
 @api.get("/exports/events.xlsx")
+@require_permission(VIEW_EVENTS)
 def export_events_excel():
     data=[serialize(x) for x in Event.query.order_by(Event.timestamp.desc()).all()];book=Workbook(write_only=True);sheet=book.create_sheet("Events")
     keys=list(data[0]) if data else ["id"];sheet.append(keys)

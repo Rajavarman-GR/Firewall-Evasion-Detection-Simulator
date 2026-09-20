@@ -8,13 +8,14 @@ from datetime import datetime, timedelta, timezone
 
 class TestConfig:
     TESTING=True
-    SECRET_KEY="test"
+    SECRET_KEY="test-secret-key-for-testing-only"
     SQLALCHEMY_DATABASE_URI="sqlite:///:memory:"
     SQLALCHEMY_TRACK_MODIFICATIONS=False
     ATTEMPT_THRESHOLDS={"temporary":3,"long":5,"permanent":10}
     TEMP_BLOCK_DURATION=5
     LONG_BLOCK_DURATION=30
     CORRELATION_WINDOW=300
+    WTF_CSRF_ENABLED=False
 
 
 class SocTestCase(unittest.TestCase):

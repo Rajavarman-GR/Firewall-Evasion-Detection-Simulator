@@ -98,11 +98,11 @@ class AuditLog(db.Model):
 class InvestigationNote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     incident_id = db.Column(db.Integer, db.ForeignKey("incident.id"), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     timestamp = db.Column(db.DateTime, default=utc_now, nullable=False)
     content = db.Column(db.Text, nullable=False)
     incident = db.relationship("Incident", backref=db.backref("notes", lazy=True, cascade="all, delete-orphan"))
-    user = db.relationship("User")
+    user = db.relationship("User", backref=db.backref("investigation_notes", lazy=True, passive_deletes=True))
 
 
 class SystemSetting(TimestampMixin, db.Model):

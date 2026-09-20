@@ -86,7 +86,8 @@ def firewall_decision(event):
     for rule in FirewallRule.query.filter_by(enabled=True).order_by(FirewallRule.priority.asc(), FirewallRule.id.asc()):
         if _rule_matches(rule, event):
             if rule.action in {"BLOCK_TEMPORARY", "BLOCK_PERMANENT"}:
-                block_ip(event.source_ip, "Rule: " + rule.name, event.severity, permanent=rule.action == "BLOCK_PERMANENT")
+                duration = setting_int("TEMP_BLOCK_DURATION", 5) if rule.action == "BLOCK_TEMPORARY" else None
+                block_ip(event.source_ip, "Rule: " + rule.name, event.severity, duration_minutes=duration, permanent=rule.action == "BLOCK_PERMANENT")
             return rule.action, "Rule: " + rule.name
     return "ALLOW", "Default allow policy: no enabled rule matched"
 
@@ -119,7 +120,7 @@ def detect(event):
     web = Event.query.filter_by(source_ip=event.source_ip, attack_type="Web Attack").filter(Event.timestamp >= now-timedelta(seconds=90)).count()
     if failed > setting_int("BRUTE_FORCE_THRESHOLD", 5): return ("BRUTE_FORCE_001", "HIGH", "Temporary Block", f"{failed} failed login events from {event.source_ip} within 60 seconds.")
     if len(ports) > setting_int("PORT_SCAN_THRESHOLD", 10): return ("PORT_SCAN_001", "HIGH", "Temporary Block", f"{len(ports)} destination ports contacted by {event.source_ip} within 30 seconds.")
-    if web >= 3: return ("WEB_ATTACK_001", "CRITICAL", "Create Incident", f"{web} suspicious web events from {event.source_ip} within 90 seconds.")
+    if web >= setting_int("WEB_ATTACK_THRESHOLD", 3): return ("WEB_ATTACK_001", "CRITICAL", "Create Incident", f"{web} suspicious web events from {event.source_ip} within 90 seconds.")
     return None
 
 
@@ -131,14 +132,19 @@ def correlate_and_incident(event, detection_result):
     if not should_create: return None
     existing = Incident.query.filter_by(source_ip=event.source_ip).filter(Incident.status.in_(["OPEN", "INVESTIGATING", "CONTAINED"])).first()
     severity = "CRITICAL" if len(types) >= 3 or event.severity == "CRITICAL" else (detection_result[1] if detection_result else event.severity)
+    severity_order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     if not existing:
-        number = f"INC-{(Incident.query.count()+1):04d}"
+        max_number = db.session.query(db.func.max(Incident.id)).scalar() or 0
+        number = f"INC-{(max_number+1):04d}"
         existing = Incident(incident_number=number, title="Possible Multi-Stage Attack" if len(types)>=3 else event.attack_type,
             description=(detection_result[3] if detection_result else "Related simulated events correlated by source and time."), severity=severity, risk_score=event.risk_score,
             status="OPEN", first_seen=event.timestamp, last_seen=event.timestamp, event_count=0, source_ip=event.source_ip,
             attack_category=event.attack_type, mitre_techniques=MITRE.get(event.attack_type, ""))
         db.session.add(existing); db.session.flush(); audit("CREATE_INCIDENT", "incident", existing.id, existing.title)
-    existing.last_seen, existing.event_count = event.timestamp, len(related)
+    existing.last_seen = event.timestamp
+    existing.event_count = Event.query.filter_by(incident_id=existing.id).count() + 1
+    if severity_order.get(severity, 0) > severity_order.get(existing.severity, 0):
+        existing.severity = severity
     for item in related:
         item.incident_id = existing.id
     return existing

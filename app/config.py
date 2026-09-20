@@ -1,9 +1,13 @@
 import os
+import sys
 from datetime import timedelta
 
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "development-only-change-me")
+    SECRET_KEY = os.getenv("SECRET_KEY")
+    if not SECRET_KEY:
+        print("WARNING: SECRET_KEY environment variable is not set. Using insecure default for development only.", file=sys.stderr)
+        SECRET_KEY = "development-only-insecure-change-in-production"
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///soc_simulator.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SESSION_COOKIE_HTTPONLY = True

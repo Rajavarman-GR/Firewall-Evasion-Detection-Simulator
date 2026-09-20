@@ -1,12 +1,13 @@
 from flask import Flask
 from app.config import Config
-from app.extensions import db
+from app.extensions import db, csrf
 
 
 def create_app(config_class=Config):
     app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app.config.from_object(config_class)
     db.init_app(app)
+    csrf.init_app(app)
     from app.routes.web import web
     from app.routes.api import api
     app.register_blueprint(web)

@@ -17,6 +17,7 @@ def seed():
     defaults = {
         "BRUTE_FORCE_THRESHOLD": ("5", "Failed-login events within 60 seconds before detection."),
         "PORT_SCAN_THRESHOLD": ("10", "Distinct destination ports within 30 seconds before detection."),
+        "WEB_ATTACK_THRESHOLD": ("3", "Suspicious web events within 90 seconds before detection."),
         "TEMP_BLOCK_DURATION": ("5", "Temporary simulated block duration in minutes."),
         "PERMANENT_BLOCK_THRESHOLD": ("10", "Violations before a permanent simulated block."),
         "CORRELATION_WINDOW": ("300", "Correlation window in seconds."),
